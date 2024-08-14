@@ -1,0 +1,53 @@
+# Config for finetuning-tuning (on sci-PLex) a chemCPA model that was petrained on L1000
+training:
+  checkpoint_freq: 15 # checkpoint frequency to run evaluate, and maybe save checkpoint
+  num_epochs: 26 # maximum epochs for training. One epoch updates either autoencoder, or adversary, depending on adversary_steps.
+  max_minutes: 1200 # maximum computation time
+
+dataset:
+  perturbation_key: condition # stores name of the drug
+  pert_category: cov_drug_dose_name # stores celltype_drugname_drugdose
+  dose_key: dose_val # stores drug dose as a float
+  celltype_key: cell_type # necessary field for cell types. Fill it with a dummy variable if no celltypes present.
+  smiles_key: SMILES # stores SMILES representation of drug
+  dataset_path: /ailab/user/liuxinyuan/projects/perturb_project/sciplex3/sciplex_smiles_hvgenes_scgpt_resplit.h5ad # full path to the anndata dataset
+  degs_key: rank_genes_groups_cov # `uns` column name denoting the DEGs for each perturbation
+  control_key: control # key of the column indicating if it’s in control state or not
+  split_key: split # key of split setting
+  split_ood: True # whether create dataset object for ood group, can be set to True only when your split has ood group
+  pc_cov: cell_type # decide which column used to identify paired control group
+  deg_dict_key: cov_drug_dose_name
+  scgpt_key: X_scGPT # store the FM-encoded embedding for each sample
+  type_drug_key: cov_drug_name
+
+model:
+  embedding:
+    directory: /ailab/user/liuxinyuan/projects/perturb_project/sciplex3/drug_emb/rdkit/embeddings_lincs_sciplex3.parquet # null will load the path from paths.py
+    model: rdkit
+  ct_embedding:
+    load_ct_emb: True
+  hparams:
+    lat_dim: 128
+    encoder_width: 256
+    encoder_depth: 4
+    decoder_width: 1028
+    decoder_depth: 4
+    dosers_width: 64
+    dosers_depth: 3
+    embedding_encoder_width: 128
+    embedding_encoder_depth: 4
+    dropout: 0.2
+    step_size_lr: 50
+    lr: 1e-3
+    wd: 1e-7
+    cell_wd: 1e-3
+    batch_size: 128
+    change_bs: 0
+    alpha: 0.75
+    cell_pred: 1
+    mmd: 0.01
+    neg: 0.1
+    single_mmd: False
+    adapt: 0.01
+    
+
