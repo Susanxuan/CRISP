@@ -1,0 +1,52 @@
+training:
+  checkpoint_freq: 25 # checkpoint frequency to run evaluate
+  num_epochs: 51
+  max_minutes: 1000
+  save_dir: /ailab/user/liuxinyuan/projects/perturb_project/finetuning/benchmark/mycpa/results/
+
+dataset:
+  perturbation_key: condition
+  pert_category: cov_drug_dose_name 
+  dose_key: dose_val 
+  celltype_key: cell_type 
+  smiles_key: SMILES
+  dataset_path: /ailab/user/liuxinyuan/projects/perturb_project/nips_data/adata_pp_chemcpa_filtered_scgpt_resplit.h5ad # full path to the anndata dataset
+  degs_key: rank_genes_groups_cov # `uns` column name denoting the DEGs for each perturbation
+  control_key: neg_control
+  split_key: split
+  split_ood: True
+  pc_cov: type_donor
+  deg_dict_key: cov_drug_name
+  scgpt_key: X_scGPT
+
+model:
+  embedding:
+    directory: /ailab/user/liuxinyuan/projects/perturb_project/nips_data/embeddings/rdkit/rdkit2D_embedding_lincs_nips.parquet # null will load the path from paths.py
+    model: rdkit
+  ct_embedding:
+    load_ct_emb: True
+  hparams:
+    lat_dim: 128
+    encoder_width: 256
+    encoder_depth: 4
+    decoder_width: 1028
+    decoder_depth: 4
+    dosers_width: 64
+    dosers_depth: 3
+    embedding_encoder_width: 128
+    embedding_encoder_depth: 4
+    dropout: 0.2
+    step_size_lr: 50
+    lr: 1e-3
+    wd: 1e-7
+    cell_wd: 1e-3
+    batch_size: 128
+    change_bs: 0
+    alpha: 0.75
+    cell_pred: 1
+    mmd: 0.1
+    neg: 0.1
+    single_mmd: False
+    adapt: 0.1
+
+
