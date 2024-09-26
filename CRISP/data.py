@@ -114,7 +114,7 @@ def drug_to_idx(drugs_names):
     }
     drugs_idx = [_drugs_name_to_idx[drug] for drug in drugs_names]
 
-    return drugs_idx, drugs_names_unique_sorted
+    return drugs_idx, drugs_names_unique_sorted,_drugs_name_to_idx
 
 class Dataset:
     covariate_keys: Optional[List[str]]
@@ -142,6 +142,7 @@ class Dataset:
         type_drug_key='cov_drug_name',
         seed=0,
         no_ctrl=False,
+        use_FM=True,
     ):
         """
         gpt_key: The name of scGPT embedding for cells in adata.obsm. 
@@ -178,7 +179,10 @@ class Dataset:
         except:
             self.genes = torch.Tensor(data.X)
         self.var_names = data.var_names
-        self.scgpt = torch.tensor(data.obsm[gpt_key])
+        if use_FM:
+            self.scgpt = torch.tensor(data.obsm[gpt_key],dtype=torch.float)
+        else: 
+            self.scgpt = self.genes.clone()
         self.control_key = control_key
         obs_df = data.obs.copy()
         
@@ -192,11 +196,6 @@ class Dataset:
 
         # celltype-specific FM-embedding
         self.celltype = np.array(data.obs[celltype_key].values)
-        self.unique_celltype = np.array(sorted(set(self.celltype)))
-        self.num_celltypes = len(self.unique_celltype)
-        self.celltype_to_idx = {ct:idx for idx,ct in enumerate(self.unique_celltype)}
-        celltype_idx = [self.celltype_to_idx[ct] for ct in self.celltype]
-        self.celltype_idx = torch.tensor(celltype_idx, dtype=torch.long)
 
         # preprocess of drug perturbation and covariate information
         self.perturbation_key = perturbation_key
@@ -216,7 +215,7 @@ class Dataset:
             self.dose_names = np.array(data.obs[dose_key].values)
 
             # get unique drugs
-            drugs_idx,self.drugs_names_unique_sorted = drug_to_idx(self.drugs_names)
+            drugs_idx,self.drugs_names_unique_sorted,_ = drug_to_idx(self.drugs_names)
             self.canon_smiles_unique_sorted = drug_names_to_once_canon_smiles(
                 list(self.drugs_names_unique_sorted), data, perturbation_key, smiles_key
             )
@@ -370,8 +369,13 @@ class SubDataset:
         self.group_idxs = indx(dataset.group_idxs, indices)
 
         self.celltype = indx(dataset.celltype, indices)
-        self.celltype_idx = indx(dataset.celltype_idx, indices)
-        self.num_celltypes = len(np.unique(self.celltype_idx))
+        self.unique_celltype = np.array(sorted(set(self.celltype)))
+        self.num_celltypes = len(self.unique_celltype)
+        self.celltype_to_idx = {ct:idx for idx,ct in enumerate(self.unique_celltype)}
+        celltype_idx = [self.celltype_to_idx[ct] for ct in self.celltype]
+        self.celltype_idx = torch.tensor(celltype_idx, dtype=torch.long)
+        # self.celltype_idx = indx(dataset.celltype_idx, indices)
+        # self.num_celltypes = len(np.unique(self.celltype_idx))
 
         if split_set == 'train':
             neg_idx = dataset.neg_idx
@@ -466,6 +470,7 @@ def load_dataset_splits(
     type_drug_key='cov_drug_name',
     seed=0,
     no_ctrl=False,
+    use_FM=True,
 ):
     dataset = Dataset(
         dataset_path,
@@ -484,6 +489,7 @@ def load_dataset_splits(
         type_drug_key,
         seed,
         no_ctrl,
+        use_FM,
     )
     # neg_idx = dataset.neg_idx
     # neg_training = SubDataset(dataset, neg_idx,'train')

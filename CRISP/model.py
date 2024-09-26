@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-from .losses import MMDloss, MMD_group, AFMSELoss, dir_loss, compute_mmd,loss_adapt
+from .losses import MMDloss, AFMSELoss, loss_adapt
 from geomloss import SamplesLoss
 
 def _move_inputs(*inputs, device="cuda"):
@@ -73,26 +73,6 @@ class MLP(torch.nn.Module):
             return self.relu(x)
         return self.network(x)
 
-
-class vaencoder_FM(torch.nn.Module):
-    def __init__(self,dims,n_latent,dropout):
-        super(vaencoder_FM, self).__init__()
-        self.encoderlayers = torch.nn.ModuleList()
-        self.encodernorms = torch.nn.ModuleList()
-        for nin, nout in zip(dims[:-1],dims[1:]):
-            self.encoderlayers.append(torch.nn.Linear(nin,nout))
-            self.encodernorms.append(torch.nn.BatchNorm1d(nout))
-        self.mu = torch.nn.Linear(dims[-1],n_latent)
-        self.logvar = torch.nn.Linear(dims[-1],n_latent)
-        self.dropout = torch.nn.Dropout(dropout)
-        self.relu = torch.nn.LeakyReLU()
-    def forward(self,x):
-        for encoderlayer, encodernorm in zip(self.encoderlayers,self.encodernorms):
-            x = self.dropout(self.relu(encodernorm(encoderlayer(x))))
-        mu = self.mu(x)
-        logvar = self.logvar(x)
-        return mu, logvar
-
 class PertAE(torch.nn.Module):
 
     def __init__(
@@ -145,7 +125,7 @@ class PertAE(torch.nn.Module):
         self.encoder_FM = MLP(
             [self.FM_ndim]
             + [self.hparams["encoder_width"]] * self.hparams["encoder_depth"]
-            + [self.hparams["lat_dim"]],
+            + [self.hparams["lat_dim"]*2],
             dropout=self.hparams['dropout'],
         )
 
@@ -372,6 +352,7 @@ class PertAE(torch.nn.Module):
 
     def predict(
         self,
+        genes,
         cell_embeddings, # FM-encoded paired control embedding 
         drugs_idx=None,
         dosages=None,
@@ -382,11 +363,17 @@ class PertAE(torch.nn.Module):
         given paired control embedding, drugs, and cell type, etc
         """
         assert drugs_idx is not None and dosages is not None
-        cell_embeddings, drugs_idx, dosages, covariates = _move_inputs(
-            cell_embeddings, drugs_idx, dosages, covariates, device=self.device
+        genes, cell_embeddings, drugs_idx, dosages, covariates = _move_inputs(
+            genes, cell_embeddings, drugs_idx, dosages, covariates, device=self.device
         )
 
-        latent_basal = self.encoder_FM(cell_embeddings)
+        output = self.encoder_FM(cell_embeddings)
+        mu = output[:,0:self.hparams['lat_dim']]
+        logvar = F.relu(output[:,self.hparams['lat_dim']:]).clamp(max=10)
+        gaussian_noise = torch.randn(mu.size(0), mu.size(1), device=self.device)
+        latent_basal = gaussian_noise*torch.exp(logvar*0.5) + mu
+        # latent_basal = self.encoder_FM(cell_embeddings)
+
         latent_treated = [latent_basal]
         
         if self.num_drugs > 0:
@@ -405,7 +392,7 @@ class PertAE(torch.nn.Module):
         latent_treated = torch.cat(latent_treated,dim=1)
         gene_reconstructions = self.decoder(latent_treated)
 
-        return gene_reconstructions, latent_treated
+        return gene_reconstructions, latent_treated, mu, logvar
 
 
     def iter_update(
@@ -434,13 +421,15 @@ class PertAE(torch.nn.Module):
         """
         assert drugs_idx is not None and dosages is not None
 
-        gene_reconstructions, latent_treated = self.predict(
+        gene_reconstructions, latent_treated, mu, logvar = self.predict(
+            genes=genes,
             cell_embeddings=cell_embeddings,
             drugs_idx=drugs_idx,
             dosages=dosages,
             covariates=covariates,
         )
-        neg_gene_reconstructions, neg_latent_treated = self.predict(
+        neg_gene_reconstructions, neg_latent_treated, neg_mu, neg_logvar = self.predict(
+            genes=neg_genes,
             cell_embeddings=neg_cell_embeddings,
             drugs_idx=neg_drugs_idx,
             dosages=neg_dosages,
@@ -454,7 +443,11 @@ class PertAE(torch.nn.Module):
         both_degs = torch.concatenate((degs,neg_degs))
         both_paired_mean = torch.concatenate((paired_mean,neg_paired_mean))
         both_paired_std = torch.concatenate((paired_std,neg_paired_std))
+        both_mu = torch.concatenate((mu,neg_mu))
+        both_logvar = torch.concatenate((logvar,neg_logvar))
 
+        kld_loss = -0.5 * (1 + both_logvar - both_mu**2 - torch.exp(both_logvar)).sum(1).mean()
+        
         afloss = self.loss_afmse(y=both_genes,pred=both_recon,degs=both_degs)
         mseloss = self.loss_mse(both_genes, both_recon)
         if self.hparams['single_mmd']:
@@ -475,7 +468,8 @@ class PertAE(torch.nn.Module):
 
         alpha = self.hparams['alpha']
         reconstruction_loss = mseloss * alpha + afloss * (1-alpha)
-        loss = reconstruction_loss + adapt*self.hparams['adapt'] + ct_pred_loss * self.hparams['cell_pred'] + mmdloss*self.hparams['mmd'] + neg_loss*self.hparams['neg']
+        kld_weight = 1 / (self.hparams['kld_weight'] * both_mu.shape[1])
+        loss = reconstruction_loss + adapt*self.hparams['adapt'] + ct_pred_loss * self.hparams['cell_pred'] + mmdloss*self.hparams['mmd'] + neg_loss*self.hparams['neg'] + kld_loss*kld_weight
 
         self.optimizer_autoencoder.zero_grad()
         self.optimizer_cell.zero_grad()
@@ -497,6 +491,7 @@ class PertAE(torch.nn.Module):
             "neg_loss": neg_loss.item(),
             "cell_pred": ct_pred_loss.item(),
             "adapt": adapt.item(),
+            "kld": kld_loss.item(),
             "loss_reconstruction": reconstruction_loss.item(),
         }
 

@@ -4,15 +4,17 @@ import torch.nn.functional as F
 from torch import nn
 from geomloss import SamplesLoss
 
-def loss_adapt(pred,true,mean_ctrl,std_ctrl,thres=2):
+def loss_adapt(pred,true,mean_ctrl,std_ctrl,thres=2,std_thres=0.01):
 
     std_ctrl += 1e-8
+    std_ctrl = std_ctrl.clamp(min=std_thres)
     pred_delta = ((pred-mean_ctrl)/std_ctrl)
     true_delta = ((true-mean_ctrl)/std_ctrl)
 
     mask = torch.logical_or((pred_delta**2)>(thres**2),(true_delta**2)>(thres**2))
+    # mask = torch.logical_and(mask_p,std_ctrl>std_thres)
 
-    return torch.sum(((pred_delta-true_delta).clamp(min=-8,max=8)**2) * mask) / pred.shape[0]/ pred.shape[1]
+    return torch.sum(((pred_delta-true_delta).clamp(min=-10,max=10)**2) * mask) / pred.shape[0] / pred.shape[1]
 
 
 class RBF(nn.Module):
@@ -45,29 +47,15 @@ def MMDloss(X,Y,device='cuda'):
 
     return XX - 2 * XY + YY
 
-def MMD_group(group_idx,true, pred,device='cuda'):
-    l_ = torch.tensor([0.0],device=device)
-    for i in set(group_idx):
-        mask = group_idx==i.item()
-        # l = MMDloss(true[mask,:],pred[mask,:])
-        l = compute_mmd(true[mask,:],pred[mask,:])
-        l_ += l
+# def MMD_group(group_idx,true, pred,device='cuda'):
+#     l_ = torch.tensor([0.0],device=device)
+#     for i in set(group_idx):
+#         mask = group_idx==i.item()
+#         # l = MMDloss(true[mask,:],pred[mask,:])
+#         l = compute_mmd(true[mask,:],pred[mask,:])
+#         l_ += l
 
-    return l_/len(set(group_idx))
-
-def compute_mmd(x, y, bandwidth=1.0):
-    
-    def rbf_kernel(x1, x2, bandwidth):
-        diff = x1[:, None, :] - x2[None, :, :]
-        dist_sq = torch.sum(diff ** 2, dim=-1)
-        return torch.exp(-dist_sq / (2 * bandwidth ** 2))
-    
-    Kxx = rbf_kernel(x, x, bandwidth)
-    Kyy = rbf_kernel(y, y, bandwidth)
-    Kxy = rbf_kernel(x, y, bandwidth)
-    
-    mmd = Kxx.mean() + Kyy.mean() - 2 * Kxy.mean()
-    return mmd
+#     return l_/len(set(group_idx))
 
 def gaussian_mmd(x,y,blur=1):
     loss_f = SamplesLoss(loss='gaussian',blur=blur).to(x.device)

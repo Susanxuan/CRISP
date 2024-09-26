@@ -12,17 +12,18 @@ import numpy as np
 import torch
 import pickle
 import copy
+import scanpy as sc
 
 from .data import load_dataset_splits, custom_collate
 from .embedding import get_chemical_representation
 from .model import PertAE
-from .eval import evaluate
+from .eval import evaluate, repeat_n, compute_prediction_CRISP
 
 
 class Trainer:
 
     def __init__(self):
-        pass
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def init_dataset(self, data_params: dict,seed):
 
@@ -45,18 +46,62 @@ class Trainer:
         hparams: dict,
         seed: int,
     ):
-        device = "cuda" if torch.cuda.is_available() else "cpu"
         self.autoencoder = PertAE(
             self.datasets["training"].num_genes,
             self.datasets["training"].num_drugs,
             self.datasets['training'].num_celltypes,
             self.datasets["training"].num_covariates,
-            device=device,
+            device=self.device,
             seed=seed,
             hparams=hparams,
             FM_ndim=self.datasets["training"].paired_cell_embeddings.shape[1],
             drug_embeddings=self.drug_embeddings,
         )
+
+    def load_model(self,model_path):
+        mo = torch.load(model_path,map_location=torch.device('cpu'))
+        self.autoencoder = PertAE(**mo[1],drug_embeddings=torch.nn.Embedding.from_pretrained(mo[0]['drug_embeddings.weight']),device=self.device)
+        self.autoencoder.load_state_dict(mo[0])
+
+
+    def get_prediction(self, adata_ctrl, drug_name, dose, ref_drug_dict, FM_emb='X_scGPT'):
+        
+        self.autoencoder.eval()
+        cell_embs = torch.tensor(adata_ctrl.obsm[FM_emb],device=self.device)
+        genes = torch.tensor(adata_ctrl.X.A,device=self.device)
+        
+        # predictions = torch.zeros(len(adata_ctrl),len(adata_ctrl.var_names),device=self.device)
+        # latent = torch.zeros(len(adata_ctrl), self.autoencoder.hparams["lat_dim"] * self.autoencoder.num_latents, device=self.device)
+        # for ct in unique_celltype:
+        # ct_idx = np.where(adata_ctrl.obs[celltype_key]==ct)[0]
+        n_rows = cell_embs.shape[0]
+        emb_drugs = (
+            torch.tensor([ref_drug_dict[drug_name] for i in range(n_rows)],dtype=torch.long,device=self.device),
+            torch.tensor([dose for i in range(n_rows)],dtype=torch.float,device=self.device)
+            )
+        # cell_embeddings_sub = cell_embs[ct_idx,:].to(self.device)
+
+        preds, latent_treated, mu = compute_prediction_CRISP(
+            self.autoencoder,
+            genes,
+            cell_embs,
+            emb_drugs,
+            emb_covs=None,
+        )
+
+            # predictions[ct_idx] = preds
+            # latent[ct_idx] = latent_treated
+        
+
+        # adata_pred = sc.AnnData(preds.cpu().numpy(),var=adata_ctrl.var)
+        adata_pred = sc.AnnData(preds.cpu().numpy())
+        adata_lat = sc.AnnData(latent_treated.cpu().numpy())
+        adata_pred.obs = adata_ctrl.obs.copy()
+        adata_pred.obs['condition'] = drug_name
+        adata_lat.obs = adata_pred.obs.copy()
+
+        return adata_pred, adata_lat
+
 
     def load_train(self):
         """

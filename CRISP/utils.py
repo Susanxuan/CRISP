@@ -79,9 +79,9 @@ def rank_genes_groups_by_cov(
     """
 
     gene_dict = {}
+    logfc_dict = {}
     cov_categories = adata.obs[covariate].unique()
     for cov_cat in cov_categories:
-        print(cov_cat)
         # name of the control group in the groupby obs column
         control_group_cov = "_".join([cov_cat, control_group])
 
@@ -99,13 +99,18 @@ def rank_genes_groups_by_cov(
 
         # add entries to dictionary of gene sets
         de_genes = pd.DataFrame(adata_cov.uns["rank_genes_groups"]["names"])
+        logfc_genes = pd.DataFrame(adata_cov.uns['rank_genes_groups']['logfoldchanges'])
+        print(adata_cov.uns["rank_genes_groups"].keys())
+        break
         for group in de_genes:
             gene_dict[group] = de_genes[group].tolist()
+            logfc_dict[group] = logfc_genes[group].tolist()
 
     adata.uns[key_added] = gene_dict
+    adata.uns[f'{key_added}_logfc'] = logfc_dict
 
     if return_dict:
-        return gene_dict
+        return gene_dict, logfc_dict
 
 
 def canonicalize_smiles(smiles: Optional[str]):

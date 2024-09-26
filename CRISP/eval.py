@@ -6,7 +6,7 @@ from torchmetrics import R2Score
 
 from .data import SubDataset
 from .model import PertAE
-from .losses import MMDloss, compute_mmd, sinkhorn_dist,energy_dist,gaussian_mmd
+from .losses import MMDloss, sinkhorn_dist,energy_dist,gaussian_mmd
 from scipy.stats import pearsonr
 from sklearn.metrics import mean_squared_error as mse
 
@@ -50,16 +50,20 @@ def compute_cor(y_true, y_pred):
     cor_mtx = torch.corrcoef(torch.stack([y_true,y_pred],dim=0))
     return cor_mtx[0,1].item()
 
-def compute_prediction_CRISP(autoencoder, cell_embeddings, emb_drugs, emb_covs):
+def compute_prediction_CRISP(autoencoder, genes, cell_embeddings, emb_drugs, emb_covs=None):
 
-    gene_pred = autoencoder.predict(
+    gene_pred, latent_treated, mu, logvar = autoencoder.predict(
+            genes=genes,
             cell_embeddings=cell_embeddings,
             drugs_idx=emb_drugs[0],
             dosages=emb_drugs[1],
             covariates=emb_covs,
-        )[0].detach()
+        )
+    gene_pred = gene_pred.detach()
+    latent_treated = latent_treated.detach()
+    mu = mu.detach()
     
-    return gene_pred
+    return gene_pred, latent_treated, mu
 
 def evaluate(autoencoder: PertAE, treated_dataset: SubDataset, control_dataset: SubDataset, output_all=False):
     """
@@ -140,10 +144,11 @@ def evaluate(autoencoder: PertAE, treated_dataset: SubDataset, control_dataset: 
 
         preds = compute_prediction_CRISP(
             autoencoder,
+            genes_control_sub,
             cell_embeddings_sub,
             emb_drugs,
             emb_covs,
-        )
+        )[0]
 
         y_true = genes_true[idx_all, :]
         preds = preds.detach().to('cpu')
@@ -194,7 +199,11 @@ def calc_metrics(yt_m, yp_m, ctrl_m, y_true, preds, idx_de):
 
     metrics_dict['mmd'] = gaussian_mmd(y_true,preds).item()
     metrics_dict['mmd_de'] = gaussian_mmd(y_true[:,idx_de],preds[:,idx_de]).item()
-    metrics_dict['sinkhorn'] = sinkhorn_dist(y_true,preds).item()
+
+    if (preds.sum()==0) & (y_true.sum()==0):
+        metrics_dict['sinkhorn'] = 0
+    else:
+        metrics_dict['sinkhorn'] = 0
 
     if (preds[:,idx_de].sum()==0) & (y_true[:,idx_de].sum()==0):
         metrics_dict['sinkhorn_de'] = 0

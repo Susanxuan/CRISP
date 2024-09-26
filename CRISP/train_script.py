@@ -1,8 +1,7 @@
 import os
 import sys
-# When using please temporarily change it to your path of CRISP 
-# Will address this problem later
-sys.path.append('/ailab/user/liuxinyuan/projects/perturb_project/finetuning') 
+
+sys.path.append('../') 
 from pathlib import Path
 import pprint
 import argparse
@@ -35,6 +34,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, required=True, default=0, help="Seed")
     parser.add_argument("--savedir", type=str, required=True, help="Path of save model")
     parser.add_argument("--MMD",type=float,default=0.1,help="coefficient of mmd loss")
+    parser.add_argument("--FM_key",type=str, default=None,help="key of FM embeddings")
 
     pars_args = parser.parse_args()
     config_path = pars_args.config
@@ -44,6 +44,8 @@ if __name__ == "__main__":
     args["model"]['seed'] = pars_args.seed
     args['training']['save_dir'] = pars_args.savedir
     args['model']['hparams']['mmd'] = pars_args.MMD
+    if pars_args.FM_key is not None:
+        args['dataset']['scgpt_key'] = pars_args.FM_key
 
     formatted_str = pprint.pformat(args)
 
