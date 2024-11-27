@@ -11,10 +11,10 @@ import random
 def load_config(config_path):
     with open(config_path, "r") as file:
         config = yaml.load(file, Loader=yaml.SafeLoader)
-    config['model']['hparams']["lr"] = float(config['model']['hparams']["lr"])
-    config['model']['hparams']["wd"] = float(config['model']['hparams']["wd"])
-    config['model']['hparams']["cell_wd"] = float(config['model']['hparams']["cell_wd"])
-    config['model']['hparams']["dropout"] = float(config['model']['hparams']["dropout"])
+    # config['model']['hparams']["lr"] = float(config['model']['hparams']["lr"])
+    # config['model']['hparams']["wd"] = float(config['model']['hparams']["wd"])
+    # config['model']['hparams']["cell_wd"] = float(config['model']['hparams']["cell_wd"])
+    # config['model']['hparams']["dropout"] = float(config['model']['hparams']["dropout"])
 
     return config
 
@@ -119,7 +119,7 @@ def canonicalize_smiles(smiles: Optional[str]):
     else:
         return None
 
-def sample_neg(adata, split_key, cov_drug_key, condition_key, pretrain_embs,seed):
+def sample_neg(adata, split_key, cov_drug_key, condition_key,seed):
     random.seed(seed)
     adata_train = adata[adata.obs[split_key]=='train']
     grouped_adata = adata_train.obs.groupby(cov_drug_key, observed=False)

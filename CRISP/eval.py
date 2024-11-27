@@ -4,9 +4,9 @@ import torch
 from torch import nn
 from torchmetrics import R2Score
 
-from .data import SubDataset
-from .model import PertAE
-from .losses import MMDloss, sinkhorn_dist,energy_dist,gaussian_mmd
+from CRISP.data import SubDataset
+from CRISP.model import PertAE
+from CRISP.losses import sinkhorn_dist,energy_dist,gaussian_mmd
 from scipy.stats import pearsonr
 from sklearn.metrics import mean_squared_error as mse
 
@@ -50,7 +50,7 @@ def compute_cor(y_true, y_pred):
     cor_mtx = torch.corrcoef(torch.stack([y_true,y_pred],dim=0))
     return cor_mtx[0,1].item()
 
-def compute_prediction_CRISP(autoencoder, genes, cell_embeddings, emb_drugs, emb_covs=None):
+def compute_prediction_CRISP(autoencoder, genes, cell_embeddings, emb_drugs, emb_covs=None, drugs_pre=None):
 
     gene_pred, latent_treated, mu, logvar = autoencoder.predict(
             genes=genes,
@@ -58,6 +58,7 @@ def compute_prediction_CRISP(autoencoder, genes, cell_embeddings, emb_drugs, emb
             drugs_idx=emb_drugs[0],
             dosages=emb_drugs[1],
             covariates=emb_covs,
+            drugs_pre=drugs_pre,
         )
     gene_pred = gene_pred.detach()
     latent_treated = latent_treated.detach()
@@ -65,7 +66,7 @@ def compute_prediction_CRISP(autoencoder, genes, cell_embeddings, emb_drugs, emb
     
     return gene_pred, latent_treated, mu
 
-def evaluate(autoencoder: PertAE, treated_dataset: SubDataset, control_dataset: SubDataset, output_all=False):
+def evaluate(autoencoder: PertAE, treated_dataset: SubDataset, control_dataset: SubDataset):
     """
     Conduct evaluation using pearson correlation coefficiency and r2 coefficiency, MSE on both DE genes and All genes.
     It's performed for each perturbation group by condition like 'celltype_drug_dose'. 
@@ -78,8 +79,6 @@ def evaluate(autoencoder: PertAE, treated_dataset: SubDataset, control_dataset: 
     """
     eval_score_dict = {}
     pred_dict = {}
-    pred_all_dict = {}
-    true_all_dict = {}
 
     genes_control = control_dataset.genes
     genes_true = treated_dataset.genes
@@ -129,6 +128,8 @@ def evaluate(autoencoder: PertAE, treated_dataset: SubDataset, control_dataset: 
 
         ct = cell_drug_dose_comb.split('_')[0]
         genes_control_sub = genes_control[control_dataset.celltype == ct].to('cuda')
+        if len(genes_control_sub) < 5:
+            continue
         n_rows = genes_control_sub.size(0)
 
         if treated_dataset.covariates is not None:
@@ -161,10 +162,6 @@ def evaluate(autoencoder: PertAE, treated_dataset: SubDataset, control_dataset: 
         eval_score_dict[cell_drug_dose_comb] = metrics_dict
         pred_dict[cell_drug_dose_comb] = {'true':yt_m,'pred':yp_m,'ctrl':ctrl_m}
 
-        if output_all:
-            pred_all_dict[cell_drug_dose_comb] = preds
-            true_all_dict[cell_drug_dose_comb] = y_true
-
     metrics_dict_all = {}
     for k,v in eval_score_dict.items():
         for k_, v_ in v.items():
@@ -176,7 +173,7 @@ def evaluate(autoencoder: PertAE, treated_dataset: SubDataset, control_dataset: 
     for k,v in metrics_dict_all.items():
         metrics_dict_all[k] = np.mean(v)
     
-    return metrics_dict_all, eval_score_dict, pred_dict, pred_all_dict, true_all_dict
+    return metrics_dict_all, eval_score_dict, pred_dict
 
 
 def calc_metrics(yt_m, yp_m, ctrl_m, y_true, preds, idx_de):
@@ -197,21 +194,23 @@ def calc_metrics(yt_m, yp_m, ctrl_m, y_true, preds, idx_de):
     metrics_dict['pearson_delta'] = pearsonr(yt_m-ctrl_m,yp_m-ctrl_m)[0]
     metrics_dict['pearson_delta_de'] = pearsonr(yt_m[idx_de]-ctrl_m[idx_de],yp_m[idx_de]-ctrl_m[idx_de])[0]
 
-    metrics_dict['mmd'] = gaussian_mmd(y_true,preds).item()
-    metrics_dict['mmd_de'] = gaussian_mmd(y_true[:,idx_de],preds[:,idx_de]).item()
+    # metrics_dict['mmd'] = gaussian_mmd(y_true,preds).item()
+    # metrics_dict['mmd'] = 0
+    # metrics_dict['mmd_de'] = gaussian_mmd(y_true[:,idx_de],preds[:,idx_de]).item()
 
-    if (preds.sum()==0) & (y_true.sum()==0):
-        metrics_dict['sinkhorn'] = 0
-    else:
-        metrics_dict['sinkhorn'] = 0
+    # if (preds.sum()==0) & (y_true.sum()==0):
+    #     metrics_dict['sinkhorn'] = 0
+    # else:
+    #     metrics_dict['sinkhorn'] = 0
 
     if (preds[:,idx_de].sum()==0) & (y_true[:,idx_de].sum()==0):
         metrics_dict['sinkhorn_de'] = 0
     else:
         metrics_dict['sinkhorn_de'] = sinkhorn_dist(y_true[:,idx_de],preds[:,idx_de]).item()
         
-    metrics_dict['energy'] = energy_dist(y_true,preds).item()
-    metrics_dict['energy_de'] = energy_dist(y_true[:,idx_de],preds[:,idx_de]).item()
+    # metrics_dict['energy'] = energy_dist(y_true,preds).item()
+    # metrics_dict['energy'] = 0
+    # metrics_dict['energy_de'] = energy_dist(y_true[:,idx_de],preds[:,idx_de]).item()
 
     # deal with nan value
     if np.isnan(metrics_dict['pearson']):

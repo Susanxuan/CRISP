@@ -11,25 +11,25 @@ import torch
 from anndata import AnnData
 from sklearn.preprocessing import OneHotEncoder
 
-from .utils import canonicalize_smiles, sample_neg
+from CRISP.utils import canonicalize_smiles, sample_neg
 
 
 indx = lambda a, i: a[i] if a is not None else None
 
-def get_group_idx(data, deg_dict_key):
-    group_name = data.obs[deg_dict_key].values
+def get_group_idx(data, pert_group_key):
+    group_name = data.obs[pert_group_key].values
     unique_group_name = np.unique(group_name)
     unique_group_name_to_idx = dict(zip(unique_group_name,range(len(unique_group_name))))
     group_idx = torch.tensor([unique_group_name_to_idx[i] for i in group_name],dtype=torch.long)
 
     return unique_group_name_to_idx, group_idx
 
-def get_degs(data, deg_dict_key, de_genes,var_names):
+def get_degs(data, pert_group_key, de_genes,var_names):
     number_idx = np.array(range(len(data)))
     degs = torch.zeros((data.shape))
     degs = degs.bool()
     for k,sub_degenes in de_genes.items():
-        adata_sub_index = number_idx[data.obs[deg_dict_key]==k]
+        adata_sub_index = number_idx[data.obs[pert_group_key]==k]
         degs[adata_sub_index,:] = torch.tensor(var_names.isin(sub_degenes)).detach().clone()
 
     return degs
@@ -62,15 +62,17 @@ def get_paired_mean(obs_df, data, control_key, pc_cov, split_key, calc='mean',ke
         grouped_mean = grouped_df_control.apply(get_std)
 
     group_dict = dict(grouped_mean)
+    keys = group_dict.keys()
 
     if keep_ctrl:
-        choice_control_mean = [group_dict[k] for k in obs_df[obs_df[control_key]==0]['pc_cov_split'].values]
+        # choice_control_mean = [group_dict[k] for k in obs_df[obs_df[control_key]==0]['pc_cov_split'].values]
         paired = data.clone()
-        treated_index = [index_to_num[i] for i in obs_df[obs_df[control_key]==0].index]
+        treated_index = [index_to_num[i] for i in obs_df[obs_df[control_key]==0].index if (obs_df.loc[i,'pc_cov_split'] in keys)]
+        choice_control_mean = [group_dict[obs_df['pc_cov_split'][i]] for i in treated_index]
         paired[treated_index,:] = torch.tensor(np.stack(choice_control_mean,axis=0))
     
     else:
-        choice_control_mean = [group_dict[k] for k in obs_df['pc_cov_split'].values]
+        choice_control_mean = [group_dict[k] for k in obs_df['pc_cov_split'].values if k in keys]
         paired = torch.tensor(np.stack(choice_control_mean,axis=0))
     
     return paired
@@ -126,39 +128,33 @@ class Dataset:
 
     def __init__(
         self,
-        data: str,
+        data,
         perturbation_key=None,
         dose_key=None,
         celltype_key='cell_type',
         covariate_keys=None,
         smiles_key='SMILES',
-        gpt_key="X_scGPT",
+        FM_key="X_scGPT",
         degs_key="rank_genes_groups_cov",
-        pert_category="cov_drug_dose_name",
+        pert_category="cov_drug_name",
         control_key = 'control',
         split_key="split",
         pc_cov='type_donor',
-        deg_dict_key='cov_drug_name',
-        type_drug_key='cov_drug_name',
         seed=0,
-        no_ctrl=False,
         use_FM=True,
     ):
         """
-        gpt_key: The name of scGPT embedding for cells in adata.obsm. 
-            We extract scGPT embedding before training to avoid the FM's forward process in each iteration thus save time and memory
+        FM_key: The name of FM embedding for cells in adata.obsm. 
+            We extract FM embedding before training to avoid the FM's forward process in each iteration thus save time and memory
         celltype_key: The column name of cell type in obs dataframe
         covariate_keys: The column names of other covariates in obs, input as list format.
         perturbation_key: The column name of treatment name (like drug name).
         dose_key: The column name of treatment dosage
         degs_key: The name of DEG's for each celltype_treatment group in adata.uns
-        deg_dict_key: The name of column that aligns with the key of deg dict.
-            e.g: if the key of deg dict is 'celltype_drug', then the column of deg_dict_key also needs to store 'celltype_drug' information
         pert_category: The name of column storing group condition for evaluation.
-            e.g: cell type + drug name + drug dose. This is used during evaluation.
+            e.g: cell type + drug name + drug dose. This is used during contrastive sampling and evaluation. Should align with deg dict's keys
         pc_cov: The name of column in adata.obs to identify paired control group, 
             e.g 'celltype_donor' means find paired control group with the same celltype and donor attribute 
-        
         """
         logging.info(f"Starting to read in data: {data}\n...")
         if isinstance(data, AnnData):
@@ -166,38 +162,37 @@ class Dataset:
         else:
             data = sc.read(data)
         logging.info(f"Finished data loading.")
-        if no_ctrl:
-            if deg_dict_key=='cov_drug_name':
-                ood_type_dict = {'split':['Myeloid cells','T regulatory cells'],'split2':['T cells CD4+','B cells'],'split3':['T cells CD8+','NK cells']}
-            else:
-                ood_type_dict = {'split':['A549'],'split2':['K562'],'split3':['MCF7']}
-            
-            data = data[~((data.obs[split_key]=='train') & (data.obs[celltype_key].isin(ood_type_dict[split_key])))]
 
         try:
             self.genes = torch.Tensor(data.X.A)
         except:
             self.genes = torch.Tensor(data.X)
+
         self.var_names = data.var_names
         if use_FM:
-            self.scgpt = torch.tensor(data.obsm[gpt_key],dtype=torch.float)
+            self.FM_emb = torch.tensor(data.obsm[FM_key],dtype=torch.float)
         else: 
-            self.scgpt = self.genes.clone()
+            self.FM_emb = self.genes.clone()
         self.control_key = control_key
         obs_df = data.obs.copy()
         
+        # data.obs['drug_dose_name'] = adata.obs.condition.astype(str) + '_' + adata.obs.dose_val.astype(str)
+        # data.obs['cov_drug_dose_name'] = adata.obs.cell_type.astype(str) + '_' + adata.obs.drug_dose_name.astype(str)
+        if 'cov_drug_name' not in data.obs.columns:
+            data.obs['cov_drug_name'] = data.obs[celltype_key].astype(str) + '_' + data.obs[perturbation_key].astype(str)
+
         # find paired control groups and calculate paired control FM embedding and gene expression profile
-        # grouped_adata_control = get_groups(data,pc_cov,split_key,control_key)
-        self.paired_cell_embeddings = get_paired_mean(obs_df,self.scgpt,control_key,pc_cov,split_key)
-        self.paired_genes = get_paired_mean(obs_df,self.genes,control_key,celltype_key,split_key,keep_ctrl=False)
-        self.paired_std = get_paired_mean(obs_df,self.genes,control_key,celltype_key,split_key,calc='std',keep_ctrl=False)
+        self.paired_cell_embeddings = get_paired_mean(obs_df,self.FM_emb,control_key,pc_cov,split_key)
+        # self.paired_genes = get_paired_mean(obs_df,self.genes,control_key,celltype_key,split_key,keep_ctrl=True)
+        # self.paired_std = get_paired_mean(obs_df,self.genes,control_key,celltype_key,split_key,calc='std',keep_ctrl=True)
 
-        self.neg_idx = sample_neg(data, split_key,type_drug_key,perturbation_key,self.scgpt,seed)
+        # identify negative samples with same perturbation condition but different cell type
+        self.neg_idx = sample_neg(data, split_key, 'cov_drug_name',perturbation_key,seed)
 
-        # celltype-specific FM-embedding
+        # cell type labels
         self.celltype = np.array(data.obs[celltype_key].values)
 
-        # preprocess of drug perturbation and covariate information
+        # preprocess of drug perturbation and other covariate information
         self.perturbation_key = perturbation_key
         self.dose_key = dose_key
         if isinstance(covariate_keys, str):
@@ -276,12 +271,10 @@ class Dataset:
             else 0
         )
 
-        # get DEG mask matrix for each sample, indicating which genes are DE genes, used for MSE_DE loss calculation and evaluation
+        # get DEG mask matrix for each sample, indicating which genes are DE genes, used for loss calculation and evaluation
+        self.degs = get_degs(data, pert_category, self.de_genes, self.var_names)
+        self.unique_group_name_dict, self.group_idxs = get_group_idx(data, pert_category)
 
-        self.degs = get_degs(data, deg_dict_key, self.de_genes, self.var_names)
-        self.unique_group_name_dict, self.group_idxs = get_group_idx(data, deg_dict_key)
-
-        
         self.indices = {
             "all": list(range(len(self.genes))),
             "control": np.where(data.obs[control_key] == 1)[0].tolist(),
@@ -300,8 +293,6 @@ class Dataset:
             return (
                 self.genes[i],
                 self.paired_cell_embeddings[i],
-                self.paired_genes[i],
-                self.paired_std[i],
                 indx(self.drugs_idx, i),
                 indx(self.dosages, i),
                 indx(self.degs, i),
@@ -313,8 +304,6 @@ class Dataset:
             return (
                 self.genes[i],
                 self.paired_cell_embeddings[i],
-                self.paired_genes[i],
-                self.paired_std[i],
                 indx(self.drugs_idx, i),
                 indx(self.dosages, i),
                 indx(self.degs, i),
@@ -339,8 +328,8 @@ class SubDataset:
         self.canon_smiles_unique_sorted = dataset.canon_smiles_unique_sorted
 
         self.genes = dataset.genes[indices]
-        self.paired_genes = dataset.paired_genes[indices]
-        self.paired_std = dataset.paired_std[indices]
+        # self.paired_genes = dataset.paired_genes[indices]
+        # self.paired_std = dataset.paired_std[indices]
         self.paired_cell_embeddings = dataset.paired_cell_embeddings[indices]
 
         self.drugs_idx = indx(dataset.drugs_idx, indices)
@@ -374,15 +363,13 @@ class SubDataset:
         self.celltype_to_idx = {ct:idx for idx,ct in enumerate(self.unique_celltype)}
         celltype_idx = [self.celltype_to_idx[ct] for ct in self.celltype]
         self.celltype_idx = torch.tensor(celltype_idx, dtype=torch.long)
-        # self.celltype_idx = indx(dataset.celltype_idx, indices)
-        # self.num_celltypes = len(np.unique(self.celltype_idx))
 
         if split_set == 'train':
             neg_idx = dataset.neg_idx
             self.neg_idx = neg_idx
             self.neg_genes = self.genes[neg_idx]
-            self.neg_paired_genes = self.paired_genes[neg_idx]
-            self.neg_paired_std = self.paired_std[neg_idx]
+            # self.neg_paired_genes = self.paired_genes[neg_idx]
+            # self.neg_paired_std = self.paired_std[neg_idx]
             self.neg_paired_cell_embeddings = self.paired_cell_embeddings[neg_idx]
             self.neg_drugs_idx = indx(self.drugs_idx, neg_idx)
             self.neg_dosages = indx(self.dosages, neg_idx)
@@ -395,12 +382,6 @@ class SubDataset:
                 self.neg_covariate_names = None
         else:
             self.neg_idx = None
-        
-
-        # if split_set == 'ood':
-        #     self.celltype_emb_dict = dataset.celltype_emb_dict_ood
-        # else:
-        #     self.celltype_emb_dict = dataset.celltype_emb_dict
 
 
     def __getitem__(self, i):
@@ -408,22 +389,20 @@ class SubDataset:
             return (
                 self.genes[i],
                 self.paired_cell_embeddings[i],
-                self.paired_genes[i],
-                self.paired_std[i],
+                # self.paired_genes[i],
+                # self.paired_std[i],
                 indx(self.drugs_idx, i),
                 indx(self.dosages, i),
                 indx(self.degs, i),
                 indx(self.celltype_idx, i),
-                # indx(self.group_idxs,i),
                 self.neg_genes[i],
                 self.neg_paired_cell_embeddings[i],
-                self.neg_paired_genes[i],
-                self.neg_paired_std[i],
+                # self.neg_paired_genes[i],
+                # self.neg_paired_std[i],
                 indx(self.neg_drugs_idx, i),
                 indx(self.neg_dosages, i),
                 indx(self.neg_degs, i),
                 indx(self.neg_celltype_idx, i),
-                # indx(self.neg_group_idxs,i),
                 None,
                 None,
             )
@@ -431,86 +410,24 @@ class SubDataset:
             return (
                 self.genes[i],
                 self.paired_cell_embeddings[i],
-                self.paired_genes[i],
+                # self.paired_genes[i],
                 indx(self.drugs_idx, i),
                 indx(self.dosages, i),
                 indx(self.degs, i),
                 indx(self.celltype_idx, i),
-                # indx(self.group_idxs,i),
                 self.neg_genes[i],
                 self.neg_paired_cell_embeddings[i],
-                self.neg_paired_genes[i],
+                # self.neg_paired_genes[i],
                 indx(self.neg_drugs_idx, i),
                 indx(self.neg_dosages, i),
                 indx(self.neg_degs, i),
                 indx(self.neg_celltype_idx, i),
-                # indx(self.neg_group_idxs,i),
                 *[indx(cov, i) for cov in self.covariates],
                 *[indx(cov, i) for cov in self.neg_covariates],
             )
 
     def __len__(self):
         return len(self.genes)
-
-def load_dataset_splits(
-    dataset_path: str,
-    perturbation_key: Union[str, None],
-    dose_key: Union[str, None],
-    smiles_key: Union[str, None],
-    covariate_keys=None,
-    celltype_key='cell_type',
-    scgpt_key='X_scGPT',
-    degs_key: str = "rank_genes_groups_cov",
-    pert_category: str = "cov_drug_dose_name",
-    control_key: str = 'control',
-    split_key: str = "split",
-    pc_cov: str='cell_type',
-    deg_dict_key: str='cov_drug_name',
-    split_ood: bool = True,
-    type_drug_key='cov_drug_name',
-    seed=0,
-    no_ctrl=False,
-    use_FM=True,
-):
-    dataset = Dataset(
-        dataset_path,
-        perturbation_key,
-        dose_key,
-        celltype_key,
-        covariate_keys,
-        smiles_key,
-        scgpt_key,
-        degs_key,
-        pert_category,
-        control_key,
-        split_key,
-        pc_cov,
-        deg_dict_key,
-        type_drug_key,
-        seed,
-        no_ctrl,
-        use_FM,
-    )
-    # neg_idx = dataset.neg_idx
-    # neg_training = SubDataset(dataset, neg_idx,'train')
-
-    if split_ood:
-        splits = {
-            "training": dataset.subset("train", "all"),
-            "test_treated": dataset.subset("test", "treated"),
-            "test_control": dataset.subset('test','control'),
-            "ood_treated": dataset.subset('ood','treated'),
-            "ood_control": dataset.subset('ood','control'),
-        }
-    else:
-        splits = {
-            "training": dataset.subset("train", "all"),
-            "test_treated": dataset.subset("test", "treated"),
-            "test_control": dataset.subset('test','control'),
-        }
-    del dataset
-
-    return splits
     
 def custom_collate(batch):
     transposed = zip(*batch)
