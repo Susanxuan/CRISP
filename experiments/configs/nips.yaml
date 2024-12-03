@@ -18,6 +18,6 @@ dataset:
   FM_key: X_scGPT
 
 model:
-  drug_emb: ../data/drug_embeddings/rdkit2D_embedding_lincs_nips.parquet
+  drug_emb: ../../data/drug_embeddings/embeddings_lincs_gbm_sci_nips.parquet
 
 

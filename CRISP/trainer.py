@@ -183,7 +183,7 @@ class Trainer:
                 torch.tensor([dose for i in range(n_rows)],dtype=torch.float,device=self.device)
             )
 
-            drugs_pre = torch.tensor([smile_df.loc[smile].values]*n_rows, dtype=torch.float, device=self.device)
+            drugs_pre = torch.tensor(np.array([smile_df.loc[smile].values]*n_rows), dtype=torch.float, device=self.device)
 
         preds, latent_treated, mu = compute_prediction_CRISP(
             self.autoencoder,
