@@ -1,7 +1,9 @@
 ## Preparation of dataset
+We have provided [preprocessed datasets](https://drive.google.com/drive/folders/1QWjmpYZMaqxfLwIeLjwoz-H9vX60udeu?usp=drive_link) to use directly.
+
 
 ### Training:
-Before conducting training, you need to complete several preprocess stages for your datasets. We have provided [preprocessed datasets](https://drive.google.com/drive/folders/1QWjmpYZMaqxfLwIeLjwoz-H9vX60udeu?usp=drive_link) to use directly.
+Before conducting training, you need to complete several preprocess stages for your datasets.
 
 1. Prepare the raw anndata as .h5ad file or other format. It should contain both perturbed and unperturbed samples.
 2. Perform normalization and log1p processing using scanpy.
