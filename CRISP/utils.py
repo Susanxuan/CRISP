@@ -100,8 +100,8 @@ def rank_genes_groups_by_cov(
         # add entries to dictionary of gene sets
         de_genes = pd.DataFrame(adata_cov.uns["rank_genes_groups"]["names"])
         logfc_genes = pd.DataFrame(adata_cov.uns['rank_genes_groups']['logfoldchanges'])
-        print(adata_cov.uns["rank_genes_groups"].keys())
-        break
+        # print(adata_cov.uns["rank_genes_groups"].keys())
+        # break
         for group in de_genes:
             gene_dict[group] = de_genes[group].tolist()
             logfc_dict[group] = logfc_genes[group].tolist()

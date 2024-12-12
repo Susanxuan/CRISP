@@ -73,5 +73,6 @@ if __name__ == "__main__":
     )
     exp.load_train()
     logging.info(f'Start training')
-    exp.train(**args["training"])
+    eval_ood = args['dataset']['split_ood']
+    exp.train(**args["training"],eval_ood=eval_ood)
     logging.info(f'Finish training')

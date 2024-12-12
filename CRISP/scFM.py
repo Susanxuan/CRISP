@@ -1,4 +1,3 @@
-import scanpy as sc
 from scgpt.tasks import embed_data
 import scanpy as sc
 
