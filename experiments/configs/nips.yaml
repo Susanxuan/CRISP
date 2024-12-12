@@ -9,15 +9,15 @@ dataset:
   dose_key: dose_val 
   celltype_key: cell_type 
   smiles_key: SMILES
-  adata_obj: /ailab/user/zonglicheng/liuxinyuan/projects2/perturb_project/nips_data/adata_pp_chemcpa_filtered_scgpt_resplit.h5ad # full path to the anndata dataset
+  adata_obj: /path/to/nips_pp_scFM_resplit.h5ad # full path to the anndata dataset
   degs_key: rank_genes_groups_cov # `uns` column name denoting the DEGs for each perturbation
   control_key: neg_control
   split_key: split
-  split_ood: True
+  split_ood: False
   pc_cov: type_donor
-  FM_key: X_scGPT
+  FM_key: X_scGPT_human
 
 model:
-  drug_emb: ../data/drug_embeddings/rdkit2D_embedding_lincs_nips.parquet
+  drug_emb: ../../data/drug_embeddings/embeddings_lincs_gbm_sci_nips.parquet
 
 
