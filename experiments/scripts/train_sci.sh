@@ -17,7 +17,7 @@ for sd in 1327 1337 1347; do
             --config ../configs/sci.yaml \
             --split $sp \
             --seed $sd \
-            --savedir ../results/sci_newdrugemb/sci_${sp}_${sd} \
+            --savedir ../results/sci/sci_${sp}_${sd} \
             --MMD $MMD 
         done;
     done;

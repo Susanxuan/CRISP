@@ -17,7 +17,7 @@ for sd in 1327 1337 1347; do
             --config ../configs/nips.yaml \
             --split $sp \
             --seed $sd \
-            --savedir ../results/nips_human_nocell/nips_${sp}_${sd} \
+            --savedir ../results/nips/nips_${sp}_${sd} \
             --MMD $MMD 
         done;
     done;
