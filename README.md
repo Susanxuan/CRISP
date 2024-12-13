@@ -19,7 +19,7 @@ python CRISP/train_script.py --config [path/to/config.yaml] --split split --seed
 ```
 
 Prediction with trained model: \
-Follow the [tutorial notebook](/tutorials/zeroshot_prediction.ipynb). We provide the trained model parameter from Neurips and Sciplex3, repectively.
+Follow the [tutorial notebook](/tutorials/zeroshot_prediction.ipynb). We provide the trained model parameter from Neurips and Sciplex3, respectively.
 
 ## Data
 
