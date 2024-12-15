@@ -12,14 +12,14 @@ pip install -e .
 ## Quick Start
 
 Training: \
-Follow the [tutorial notebook for training](/tutorials/training.ipynb). Or you can directly train with script below:
+Follow the [tutorial notebook for training](/tutorials/training.ipynb). Or you can directly train with script below. Files of configs and shell scripts are provided in [experiments/](experiments/) for replication of results.
 
 ```bash
 python CRISP/train_script.py --config [path/to/config.yaml] --split split --seed 0 --savedir [path/to/save/folder]
 ```
 
 Prediction with trained model: \
-Follow the [tutorial notebook](/tutorials/zeroshot_prediction.ipynb). We provide the trained model parameter from Neurips and Sciplex3, respectively.
+Follow the [tutorial notebook](/tutorials/zeroshot_prediction.ipynb). We provide the trained [model parameter](https://drive.google.com/drive/folders/1QWjmpYZMaqxfLwIeLjwoz-H9vX60udeu?usp=drive_link) from Neurips for running prediction.
 
 ## Data
 
