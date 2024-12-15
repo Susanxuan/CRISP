@@ -14,6 +14,7 @@ import torch
 import pickle
 import copy
 import scanpy as sc
+from tqdm import tqdm
 
 from CRISP.data import Dataset, custom_collate
 from CRISP.embedding import get_chemical_representation
@@ -239,17 +240,8 @@ class Trainer:
             Path(save_dir).mkdir()
 
         start_time = time.time()
-        for epoch in range(num_epochs):
+        for epoch in tqdm(range(num_epochs)):
             epoch_training_stats = defaultdict(float)
-            # if self.autoencoder.hparams['change_bs']:
-            #     if epoch in [50,75]:
-            #         bs = self.datasets["loader_tr"].batch_size
-            #         self.datasets["loader_tr"] = torch.utils.data.DataLoader(
-            #                 self.datasets["training"],
-            #                 batch_size=bs*2,
-            #                 collate_fn=custom_collate,
-            #                 shuffle=True,)
-            #         logging.info(f'Batch size change from {bs} to {self.datasets["loader_tr"].batch_size}')
 
             for data in self.datasets["loader_tr"]:
                 genes, paired_cell_embeddings, drugs_idx, dosages, degs, celltype_idx = data[:6]
@@ -261,8 +253,6 @@ class Trainer:
                 training_stats = self.autoencoder.iter_update(
                     genes=genes,
                     cell_embeddings=paired_cell_embeddings,
-                    # paired_mean=paired_mean,
-                    # paired_std=paired_std,
                     drugs_idx=drugs_idx,
                     dosages=dosages,
                     degs=degs,
@@ -270,8 +260,6 @@ class Trainer:
                     covariates=covariates,
                     neg_genes=neg_genes,
                     neg_cell_embeddings=neg_paired_cell_embeddings,
-                    # neg_paired_mean=neg_paired_mean,
-                    # neg_paired_std=neg_paired_std,
                     neg_drugs_idx=neg_drugs_idx,
                     neg_dosages=neg_dosages,
                     neg_degs=neg_degs,
