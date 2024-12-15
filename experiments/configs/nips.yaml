@@ -13,9 +13,9 @@ dataset:
   degs_key: rank_genes_groups_cov # `uns` column name denoting the DEGs for each perturbation
   control_key: neg_control
   split_key: split
-  split_ood: False
+  split_ood: True
   pc_cov: type_donor
-  FM_key: X_scGPT_human
+  FM_key: X_scGPT
 
 model:
   drug_emb: ../../data/drug_embeddings/rdkit2D_embedding_lincs_nips.parquet
