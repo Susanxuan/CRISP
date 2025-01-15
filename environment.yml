@@ -1,4 +1,4 @@
-name: /ailab/user/chenpengan/liuxinyuan/xinyuan_env
+name: CRISP_env
 channels:
   - pyg
   - pytorch
