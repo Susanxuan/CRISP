@@ -2,7 +2,7 @@
 CRISP is developed for predicting drug perturbation response for unseen cell types in cell type-specific way. It incorporates single cell foundation models (scFMs) into a cell type-specific learning framework. By exploiting cell type similarities and divergences learned from FMs, CRISP effectively extends existing cell atlases into the perturbation space, providing a systematic approach to characterize drug-induced cellular state transitions. During the inference stage, CRISP requires only drug information and control state scRNA-seq data as input, to predict the cell type-specific drug responses.
 
 ## Installation
-
+Follow the code below to install CRISP. Installation may take about 1 minute.
 ```bash
 git clone https://github.com/Susanxuan/CRISP.git
 cd CRISP
@@ -12,7 +12,7 @@ pip install -e .
 ## Quick Start
 
 Training: \
-Follow the [tutorial notebook for training](/tutorials/training.ipynb). Or you can directly train with script below. Files of configs and shell scripts are provided in [experiments/](experiments/) for replication of results.
+Follow the [tutorial notebook for training](/tutorials/training.ipynb). Each training may take 30-60 minutes depends on size of dataset. Or you can directly train with script below. Files of configs and shell scripts are provided in [experiments/](experiments/) for replication of results. 
 
 ```bash
 python CRISP/train_script.py --config [path/to/config.yaml] --split split --seed 0 --savedir [path/to/save/folder]
